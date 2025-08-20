@@ -1,136 +1,109 @@
 #include "shell.h"
 
 /**
- * read_line - Reads one line of input from stdin.
- *
- * Return: Pointer to line buffer (must be freed), or NULL on EOF/error.
+ * print_prompt - Prints the interactive prompt.
  */
-char *read_line(void)
+void print_prompt(void)
 {
-	char *line = NULL;
-	size_t len = 0;
-
-	if (getline(&line, &len, stdin) == -1)
-	{
-		free(line);
-		return (NULL);
-	}
-	return (line);
+	write(STDOUT_FILENO, PROMPT_STR, sizeof(PROMPT_STR) - 1);
 }
 
 /**
- * parse_line - Tokenizes a line into arguments.
- * @line: Input string.
+ * first_token - Returns first whitespace-delimited token from a line.
+ * @line: Mutable input buffer (modified by strtok).
  *
- * Return: Array of strings (NULL-terminated). Must be freed by caller.
+ * Return: Pointer to first token, or NULL if none.
  */
-char **parse_line(char *line)
+char *first_token(char *line)
 {
-	size_t bufsize = TOK_BUFSIZE, idx = 0;
-	char **tokens = malloc(sizeof(char *) * bufsize);
-	char *tok;
-
-	if (!tokens)
-		return (NULL);
-
-	tok = strtok(line, TOK_DELIM);
-	while (tok)
-	{
-		tokens[idx++] = tok;
-		if (idx + 1 >= bufsize)
-		{
-			bufsize *= 2;
-			tokens = realloc(tokens, sizeof(char *) * bufsize);
-			if (!tokens)
-				return (NULL);
-		}
-		tok = strtok(NULL, TOK_DELIM);
-	}
-	tokens[idx] = NULL;
-	return (tokens);
+	return (strtok(line, DELIMS));
 }
 
 /**
- * execute - Forks and executes a command.
- * @args: Argument vector.
- * @pname: Program name for errors.
+ * run_command - Forks and runs a single-word command with execve.
+ * @cmd: Command path or name (no args supported).
+ * @pname: Program name (argv[0]) for perror prefix.
  *
- * Return: Status code.
+ * Return: 0 on completion (child exit status not propagated).
  */
-int execute(char **args, char *pname)
+int run_command(const char *cmd, const char *pname)
 {
 	pid_t pid;
-	int status;
+	int status = 0;
+	char *av[2];
 
-	if (!args[0])
+	if (!cmd || !*cmd)
 		return (0);
 
-	if (strcmp(args[0], "exit") == 0)
-		exit(0);
-	if (strcmp(args[0], "env") == 0)
-	{
-		size_t i;
-
-		for (i = 0; environ[i]; i++)
-			printf("%s\n", environ[i]);
-		return (0);
-	}
+	av[0] = (char *)cmd;
+	av[1] = NULL;
 
 	pid = fork();
+	if (pid == -1)
+	{
+		perror((char *)pname);
+		return (0);
+	}
 	if (pid == 0)
 	{
-		if (execvp(args[0], args) == -1)
+		if (execve(cmd, av, environ) == -1)
 		{
-			fprintf(stderr, "%s: 1: %s: not found\n", pname, args[0]);
-			exit(127);
+			perror((char *)pname);
+			_exit(127);
 		}
 	}
-	else if (pid < 0)
-		perror("fork");
-	else
-		waitpid(pid, &status, 0);
+	if (waitpid(pid, &status, 0) == -1)
+		perror((char *)pname);
 
 	return (0);
 }
 
 /**
- * loop - Main shell loop.
- * @pname: Program name.
+ * shell_loop - Main read/execute loop.
+ * @pname: Program name for error messages (argv[0]).
+ *
+ * Return: 0 on normal exit.
  */
-void loop(char *pname)
+int shell_loop(const char *pname)
 {
-	char *line;
-	char **args;
+	char *line = NULL, *cmd = NULL;
+	size_t len = 0;
+	ssize_t nread;
 	int interactive = isatty(STDIN_FILENO);
 
 	while (1)
 	{
 		if (interactive)
-			printf("($) ");
-		line = read_line();
-		if (!line)
+			print_prompt();
+
+		nread = getline(&line, &len, stdin);
+		if (nread == -1)
 		{
 			if (interactive)
-				printf("\n");
+				write(STDOUT_FILENO, "\n", 1);
 			break;
 		}
-		args = parse_line(line);
-		execute(args, pname);
-		free(args);
-		free(line);
+
+		cmd = first_token(line);
+		if (cmd == NULL)
+			continue;
+
+		run_command(cmd, pname);
 	}
+
+	free(line);
+	return (0);
 }
 
 /**
  * main - Entry point.
- * @argc: Arg count.
- * @argv: Arg vector.
+ * @argc: Argument count.
+ * @argv: Argument vector.
  *
- * Return: 0
+ * Return: Exit status.
  */
 int main(int argc, char **argv)
 {
 	(void)argc;
-	loop(argv[0]);
-	return (0);
+	return (shell_loop(argv[0]));
 }
