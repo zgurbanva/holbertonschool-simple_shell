@@ -1,0 +1,56 @@
+.TH simple_shell 1 "August 2025" "Holberton School" "User Commands"
+.SH NAME
+simple_shell \- simple UNIX command interpreter
+.SH SYNOPSIS
+.B hsh
+.RI [command_file]
+.SH DESCRIPTION
+.B simple_shell
+is a simple command-line interpreter that mimics the behavior of
+.BR /bin/sh .
+It reads commands from the standard input and executes them, or from a file in non-interactive mode.
+
+.SH FEATURES
+.TP
+- Displays a prompt and waits for commands in interactive mode.
+.TP
+- Executes commands with arguments.
+.TP
+- Uses the PATH variable to find executables.
+.TP
+- Handles built-in commands:
+  .RS
+  .B exit
+  Exit the shell.
+  .br
+  .B env
+  Print the current environment.
+  .RE
+.TP
+- Works in both interactive and non-interactive modes.
+.TP
+- Handles EOF (Ctrl+D) correctly.
+.TP
+- Prints errors in the format:
+  .I argv[0]: line_number: command: not found
+
+.SH USAGE
+Interactive mode:
+.EX
+$ ./hsh
+($) /bin/ls
+file1 file2 file3
+($) exit
+.EE
+
+Non-interactive mode:
+.EX
+$ echo "/bin/ls" | ./hsh
+file1 file2 file3
+.EE
+
+.SH SEE ALSO
+.BR sh (1)
+
+.SH AUTHORS
+Write the names and emails of the authors here.
