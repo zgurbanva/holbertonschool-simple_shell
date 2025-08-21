@@ -1,98 +1,72 @@
 #include "shell.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <string.h>
-#include <sys/wait.h>
+#include <unistd.h>
 
-int main(int argc, char **argv, char **envp)
+char *find_command(char *cmd, char **envp)
 {
-    char *line;
-    size_t len;
-    ssize_t nread;
-    char *args[100];
-    unsigned int line_no;
-    int status;
-    int i;
+    char *path_env;
+    char *path_copy;
     char *token;
     char *fullpath;
-    pid_t pid;
-    int wstatus;
+    size_t len;
 
-    (void)argc;
+    if (!cmd)
+        return NULL;
 
-    line = NULL;
-    len = 0;
-    line_no = 0;
-    status = 0;
-
-    while (1)
+    if (strchr(cmd, '/')) /* command contains / → direct path */
     {
-        line_no++;
+        if (access(cmd, X_OK) == 0)
+            return strdup(cmd);
+        else
+            return NULL;
+    }
 
-        if (isatty(STDIN_FILENO))
-            write(STDOUT_FILENO, "($) ", 4);
-
-        nread = getline(&line, &len, stdin);
-        if (nread == -1)
+    /* get PATH from environment */
+    path_env = NULL;
+    while (*envp)
+    {
+        if (strncmp(*envp, "PATH=", 5) == 0)
+        {
+            path_env = *envp + 5;
             break;
-
-        if (nread > 0 && line[nread - 1] == '\n')
-            line[nread - 1] = '\0';
-
-        /* tokenize input */
-        i = 0;
-        token = strtok(line, " \t");
-        while (token && i < 99)
-        {
-            args[i++] = token;
-            token = strtok(NULL, " \t");
         }
-        args[i] = NULL;
+        envp++;
+    }
 
-        if (!args[0])
-            continue;
+    if (!path_env || !*path_env)
+        return NULL; /* PATH empty or unset */
 
-        /* exit built-in */
-        if (strcmp(args[0], "exit") == 0)
-        {
-            free(line);
-            return 0;
-        }
+    path_copy = strdup(path_env);
+    if (!path_copy)
+        return NULL;
 
-        /* find command in PATH */
-        fullpath = find_command(args[0], envp);
+    token = strtok(path_copy, ":");
+    while (token)
+    {
+        len = strlen(token) + 1 + strlen(cmd) + 1;
+        fullpath = malloc(len);
         if (!fullpath)
         {
-            fprintf(stderr, "%s: %d: %s: not found\n", argv[0], line_no, args[0]);
-            status = 127;
-            continue; /* do NOT fork */
+            free(path_copy);
+            return NULL;
         }
+        strcpy(fullpath, token);
+        strcat(fullpath, "/");
+        strcat(fullpath, cmd);
 
-        /* fork and execute */
-        pid = fork();
-        if (pid == -1)
+        if (access(fullpath, X_OK) == 0)
         {
-            perror("fork");
-            free(fullpath);
-            continue;
-        }
-
-        if (pid == 0)
-        {
-            execve(fullpath, args, envp);
-            perror("execve");
-            exit(1);
-        }
-        else
-        {
-            waitpid(pid, &wstatus, 0);
+            free(path_copy);
+            return fullpath;
         }
 
         free(fullpath);
+        token = strtok(NULL, ":");
     }
 
-    free(line);
-    return status;
+    free(path_copy);
+    return NULL;
 }
 
