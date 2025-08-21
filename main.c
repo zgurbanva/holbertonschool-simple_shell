@@ -5,44 +5,47 @@
 #include <string.h>
 #include <sys/wait.h>
 
+/**
+ * main - entry point of simple shell
+ * @argc: argument count
+ * @argv: argument vector
+ * @envp: environment variables
+ *
+ * Return: exit status of last executed command
+ */
 int main(int argc, char **argv, char **envp)
 {
-    char *line;
-    size_t len;
-    ssize_t nread;
-    char *args[100];
-    unsigned int line_no;
-    int status;
-    int i;
-    char *token;
-    char *fullpath;
-    pid_t pid;
-    int wstatus;
+    char *line = NULL;
+    size_t len = 0;
+    char *args[100]; /* max 100 arguments */
+    int line_no = 0;
+    int status = 0; /* last command exit status */
 
     (void)argc;
-
-    line = NULL;
-    len = 0;
-    line_no = 0;
-    status = 0;
 
     while (1)
     {
         line_no++;
-
         if (isatty(STDIN_FILENO))
-            write(STDOUT_FILENO, "($) ", 4);
+            printf("($) ");
 
-        nread = getline(&line, &len, stdin);
-        if (nread == -1)
+        if (getline(&line, &len, stdin) == -1)
+        {
+            if (isatty(STDIN_FILENO))
+                putchar('\n');
             break;
+        }
 
-        if (nread > 0 && line[nread - 1] == '\n')
-            line[nread - 1] = '\0';
+        /* remove trailing newline */
+        line[strcspn(line, "\n")] = 0;
+
+        /* skip empty lines */
+        if (line[0] == '\0')
+            continue;
 
         /* tokenize input */
-        i = 0;
-        token = strtok(line, " \t");
+        int i = 0;
+        char *token = strtok(line, " \t");
         while (token && i < 99)
         {
             args[i++] = token;
@@ -53,40 +56,46 @@ int main(int argc, char **argv, char **envp)
         if (!args[0])
             continue;
 
-        /* exit built-in */
+        /* handle built-in exit */
         if (strcmp(args[0], "exit") == 0)
         {
             free(line);
-            return 0;
+            return status; /* return last command exit status */
         }
 
-        /* find command in PATH */
-        fullpath = find_command(args[0], envp);
+        /* find full path of command */
+        char *fullpath = find_command(args[0], envp);
         if (!fullpath)
         {
             fprintf(stderr, "%s: %d: %s: not found\n", argv[0], line_no, args[0]);
-            status = 127;
-            continue; /* do NOT fork */
+            status = 127; /* command not found */
+            continue;
         }
 
-        /* fork and execute */
-        pid = fork();
+        /* execute command */
+        pid_t pid = fork();
         if (pid == -1)
         {
             perror("fork");
             free(fullpath);
-            continue;
+            free(line);
+            exit(1);
         }
 
-        if (pid == 0)
+        if (pid == 0) /* child */
         {
             execve(fullpath, args, envp);
             perror("execve");
             exit(1);
         }
-        else
+        else /* parent */
         {
+            int wstatus;
             waitpid(pid, &wstatus, 0);
+            if (WIFEXITED(wstatus))
+                status = WEXITSTATUS(wstatus);
+            else
+                status = 1;
         }
 
         free(fullpath);
@@ -95,4 +104,3 @@ int main(int argc, char **argv, char **envp)
     free(line);
     return status;
 }
-
