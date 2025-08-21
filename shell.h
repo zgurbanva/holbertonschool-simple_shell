@@ -1,12 +1,13 @@
 #ifndef SHELL_H
 #define SHELL_H
 
-/* find_command:
- *  Searches for a command in PATH or returns full path if it contains '/'
- *  Returns a malloc’ed string with the executable path if found,
- *  or NULL if the command cannot be found or is not executable.
- */
-char *find_command(char *cmd, char **envp);
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <sys/wait.h>
+
+/* Prototypes */
+char *find_command(char *command, char **envp);
 
 #endif
-

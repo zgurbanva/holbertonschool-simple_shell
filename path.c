@@ -1,60 +1,54 @@
 #include "shell.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
 
-char *find_command(char *cmd, char **envp)
+char *find_command(char *command, char **envp)
 {
-    char *path_env;
-    char *path_copy;
-    char *token;
+    char *path_env = NULL;
+    char *path_copy, *dir;
     char *fullpath;
-    size_t len;
+    int i;
 
-    if (!cmd)
-        return NULL;
-
-    if (strchr(cmd, '/')) /* command contains / → direct path */
+    for (i = 0; envp[i]; i++)
     {
-        if (access(cmd, X_OK) == 0)
-            return strdup(cmd);
-        else
-            return NULL;
-    }
-
-    /* get PATH from environment */
-    path_env = NULL;
-    while (*envp)
-    {
-        if (strncmp(*envp, "PATH=", 5) == 0)
+        if (strncmp(envp[i], "PATH=", 5) == 0)
         {
-            path_env = *envp + 5;
+            path_env = envp[i] + 5;
             break;
         }
-        envp++;
     }
 
-    if (!path_env || !*path_env)
-        return NULL; /* PATH empty or unset */
+    if (!path_env || strchr(command, '/'))
+    {
+        /* If command has '/' or PATH not set, return copy of command */
+        fullpath = strdup(command);
+        if (!fullpath)
+        {
+            perror("strdup");
+            exit(1);
+        }
+        if (access(fullpath, X_OK) == 0)
+            return fullpath;
+        free(fullpath);
+        return NULL;
+    }
 
     path_copy = strdup(path_env);
     if (!path_copy)
-        return NULL;
-
-    token = strtok(path_copy, ":");
-    while (token)
     {
-        len = strlen(token) + 1 + strlen(cmd) + 1;
-        fullpath = malloc(len);
+        perror("strdup");
+        exit(1);
+    }
+
+    dir = strtok(path_copy, ":");
+    while (dir)
+    {
+        fullpath = malloc(strlen(dir) + strlen(command) + 2);
         if (!fullpath)
         {
+            perror("malloc");
             free(path_copy);
-            return NULL;
+            exit(1);
         }
-        strcpy(fullpath, token);
-        strcat(fullpath, "/");
-        strcat(fullpath, cmd);
+        sprintf(fullpath, "%s/%s", dir, command);
 
         if (access(fullpath, X_OK) == 0)
         {
@@ -63,10 +57,9 @@ char *find_command(char *cmd, char **envp)
         }
 
         free(fullpath);
-        token = strtok(NULL, ":");
+        dir = strtok(NULL, ":");
     }
 
     free(path_copy);
     return NULL;
 }
-

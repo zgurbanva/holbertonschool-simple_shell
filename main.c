@@ -1,23 +1,10 @@
 #include "shell.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <sys/wait.h>
 
-/**
- * main - entry point of simple shell
- * @argc: argument count
- * @argv: argument vector
- * @envp: environment variables
- *
- * Return: exit status of last executed command
- */
 int main(int argc, char **argv, char **envp)
 {
     char *line;
     size_t len;
-    char *args[100]; /* max 100 arguments */
+    char *args[100];
     int line_no;
     int status;
     int i;
@@ -46,14 +33,11 @@ int main(int argc, char **argv, char **envp)
             break;
         }
 
-        /* remove trailing newline */
         line[strcspn(line, "\n")] = 0;
 
-        /* skip empty lines */
         if (line[0] == '\0')
             continue;
 
-        /* tokenize input */
         i = 0;
         token = strtok(line, " \t");
         while (token && i < 99)
@@ -66,23 +50,33 @@ int main(int argc, char **argv, char **envp)
         if (!args[0])
             continue;
 
-        /* handle built-in exit */
+        /* exit built-in */
         if (strcmp(args[0], "exit") == 0)
         {
             free(line);
-            return status; /* return last command exit status */
+            return status;
         }
 
-        /* find full path of command */
+        /* env built-in */
+        if (strcmp(args[0], "env") == 0)
+        {
+            int j = 0;
+            while (envp[j])
+            {
+                printf("%s\n", envp[j]);
+                j++;
+            }
+            continue;
+        }
+
         fullpath = find_command(args[0], envp);
         if (!fullpath)
         {
             fprintf(stderr, "%s: %d: %s: not found\n", argv[0], line_no, args[0]);
-            status = 127; /* command not found */
+            status = 127;
             continue;
         }
 
-        /* execute command */
         pid = fork();
         if (pid == -1)
         {
@@ -92,13 +86,13 @@ int main(int argc, char **argv, char **envp)
             exit(1);
         }
 
-        if (pid == 0) /* child */
+        if (pid == 0)
         {
             execve(fullpath, args, envp);
             perror("execve");
             exit(1);
         }
-        else /* parent */
+        else
         {
             waitpid(pid, &wstatus, 0);
             if (WIFEXITED(wstatus))
