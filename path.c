@@ -1,16 +1,31 @@
-/* path.c */
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <stdio.h>
+#include "shell.h"
 
-/* get PATH value from envp (returns pointer into envp string, not malloc'd) */
+/* duplicate string (like strdup) */
+char *strdup_custom(const char *s)
+{
+    size_t len;
+    char *r;
+
+    if (!s)
+        return NULL;
+
+    len = strlen(s);
+    r = malloc(len + 1);
+    if (!r)
+        return NULL;
+
+    memcpy(r, s, len + 1);
+    return r;
+}
+
+/* get PATH from envp */
 char *_getenv_from_envp(char **envp, const char *name)
 {
     size_t i, len;
 
     if (!envp || !name)
         return NULL;
+
     len = strlen(name);
     for (i = 0; envp[i]; i++)
     {
@@ -20,7 +35,7 @@ char *_getenv_from_envp(char **envp, const char *name)
     return NULL;
 }
 
-/* join directory and filename into a newly malloc'd string: "dir/file" */
+/* join directory and file name into a malloc'd string */
 char *join_path(const char *dir, const char *file)
 {
     size_t ld, lf;
@@ -28,11 +43,13 @@ char *join_path(const char *dir, const char *file)
 
     if (!dir || !file)
         return NULL;
+
     ld = strlen(dir);
     lf = strlen(file);
-    res = malloc(ld + 1 + lf + 1); /* dir + '/' + file + '\0' */
+    res = malloc(ld + 1 + lf + 1);
     if (!res)
         return NULL;
+
     memcpy(res, dir, ld);
     res[ld] = '/';
     memcpy(res + ld + 1, file, lf);
@@ -40,36 +57,22 @@ char *join_path(const char *dir, const char *file)
     return res;
 }
 
-/* make a malloc'd copy of s */
-char *strdup_custom(const char *s)
-{
-    size_t l;
-    char *r;
-
-    if (!s)
-        return NULL;
-    l = strlen(s);
-    r = malloc(l + 1);
-    if (!r) return NULL;
-    memcpy(r, s, l + 1);
-    return r;
-}
-
-/* find command in PATH; returns malloc'd path if found, else NULL.
-   If cmd contains a '/' check it directly (absolute or relative). */
+/* find command in PATH */
 char *find_command(char *cmd, char **envp)
 {
-    char *path, *pathdup, *token, *candidate = NULL;
-    char *saveptr;
+    char *path;
+    char *pathdup;
+    char *token;
+    char *candidate = NULL;
 
     if (!cmd || !envp)
         return NULL;
 
-    /* If cmd contains a slash, check it directly */
+    /* if command contains /, check directly */
     if (strchr(cmd, '/'))
     {
         if (access(cmd, X_OK) == 0)
-            return strdup_custom(cmd); /* caller must free */
+            return strdup_custom(cmd);
         return NULL;
     }
 
@@ -77,31 +80,27 @@ char *find_command(char *cmd, char **envp)
     if (!path)
         return NULL;
 
-    /* duplicate because strtok modifies */
     pathdup = strdup_custom(path);
     if (!pathdup)
         return NULL;
 
-    token = strtok_r(pathdup, ":", &saveptr);
+    token = strtok(pathdup, ":");
     while (token)
     {
         candidate = join_path(token, cmd);
-        if (!candidate)
+        if (candidate)
         {
-            token = strtok_r(NULL, ":", &saveptr);
-            continue;
+            if (access(candidate, X_OK) == 0)
+            {
+                free(pathdup);
+                return candidate;
+            }
+            free(candidate);
+            candidate = NULL;
         }
-        if (access(candidate, X_OK) == 0)
-        {
-            free(pathdup);
-            return candidate; /* caller frees candidate */
-        }
-        free(candidate);
-        candidate = NULL;
-        token = strtok_r(NULL, ":", &saveptr);
+        token = strtok(NULL, ":");
     }
 
     free(pathdup);
     return NULL;
 }
-
