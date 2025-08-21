@@ -1,109 +1,85 @@
 #include "shell.h"
 
-/**
- * print_prompt - Prints the interactive prompt.
- */
-void print_prompt(void)
+int main(int argc, char **argv, char **envp)
 {
-	write(STDOUT_FILENO, PROMPT_STR, sizeof(PROMPT_STR) - 1);
-}
+    /* All variable declarations at the top */
+    char *line = NULL;
+    size_t len = 0;
+    ssize_t nread;
+    unsigned int line_no = 0;
+    char *token;
+    char *args[100];
 
-/**
- * first_token - Returns first whitespace-delimited token from a line.
- * @line: Mutable input buffer (modified by strtok).
- *
- * Return: Pointer to first token, or NULL if none.
- */
-char *first_token(char *line)
-{
-	return (strtok(line, DELIMS));
-}
+    int i;
+    char *fullpath;
+    pid_t pid;
+    int status;
 
-/**
- * run_command - Forks and runs a single-word command with execve.
- * @cmd: Command path or name (no args supported).
- * @pname: Program name (argv[0]) for perror prefix.
- *
- * Return: 0 on completion (child exit status not propagated).
- */
-int run_command(const char *cmd, const char *pname)
-{
-	pid_t pid;
-	int status = 0;
-	char *av[2];
+    (void)argc;
 
-	if (!cmd || !*cmd)
-		return (0);
+    while (1)
+    {
+        if (isatty(STDIN_FILENO))
+            write(STDOUT_FILENO, "($) ", 4);
 
-	av[0] = (char *)cmd;
-	av[1] = NULL;
+        nread = getline(&line, &len, stdin);
+        if (nread == -1)
+            break;
 
-	pid = fork();
-	if (pid == -1)
-	{
-		perror((char *)pname);
-		return (0);
-	}
-	if (pid == 0)
-	{
-		if (execve(cmd, av, environ) == -1)
-		{
-			perror((char *)pname);
-			_exit(127);
-		}
-	}
-	if (waitpid(pid, &status, 0) == -1)
-		perror((char *)pname);
+        line_no++;
+        if (nread > 0 && line[nread - 1] == '\n')
+            line[nread - 1] = '\0';
 
-	return (0);
-}
+        /* Tokenize input */
+        i = 0;
+        token = strtok(line, " \t");
+        while (token && i < 99)
+        {
+            args[i++] = token;
+            token = strtok(NULL, " \t");
+        }
+        args[i] = NULL;
 
-/**
- * shell_loop - Main read/execute loop.
- * @pname: Program name for error messages (argv[0]).
- *
- * Return: 0 on normal exit.
- */
-int shell_loop(const char *pname)
-{
-	char *line = NULL, *cmd = NULL;
-	size_t len = 0;
-	ssize_t nread;
-	int interactive = isatty(STDIN_FILENO);
+        if (!args[0])
+            continue;
 
-	while (1)
-	{
-		if (interactive)
-			print_prompt();
+        /* Handle exit builtin */
+        if (strcmp(args[0], "exit") == 0)
+        {
+            free(line);
+            return 0;
+        }
 
-		nread = getline(&line, &len, stdin);
-		if (nread == -1)
-		{
-			if (interactive)
-				write(STDOUT_FILENO, "\n", 1);
-			break;
-		}
+        /* Find command in PATH */
+        fullpath = find_command(args[0], envp);
+        if (!fullpath)
+        {
+            fprintf(stderr, "%s: %u: %s: not found\n", argv[0], line_no, args[0]);
+            continue;
+        }
 
-		cmd = first_token(line);
-		if (cmd == NULL)
-			continue;
+        pid = fork();
+        if (pid == -1)
+        {
+            perror("fork");
+            free(fullpath);
+            continue;
+        }
 
-		run_command(cmd, pname);
-	}
+        if (pid == 0)
+        {
+            /* child */
+            execve(fullpath, args, envp);
+            fprintf(stderr, "%s: %u: %s: not found\n", argv[0], line_no, args[0]);
+            _exit(127);
+        }
+        else
+        {
+            waitpid(pid, &status, 0);
+            free(fullpath);
+        }
+    }
 
-	free(line);
-	return (0);
-}
-
-/**
- * main - Entry point.
- * @argc: Argument count.
- * @argv: Argument vector.
- *
- * Return: Exit status.
- */
-int main(int argc, char **argv)
-{
-	(void)argc;
-	return (shell_loop(argv[0]));
+    free(line);
+    return 0;
 }
