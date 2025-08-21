@@ -15,13 +15,23 @@
  */
 int main(int argc, char **argv, char **envp)
 {
-    char *line = NULL;
-    size_t len = 0;
+    char *line;
+    size_t len;
     char *args[100]; /* max 100 arguments */
-    int line_no = 0;
-    int status = 0; /* last command exit status */
+    int line_no;
+    int status;
+    int i;
+    char *token;
+    char *fullpath;
+    pid_t pid;
+    int wstatus;
 
     (void)argc;
+
+    line = NULL;
+    len = 0;
+    line_no = 0;
+    status = 0;
 
     while (1)
     {
@@ -44,8 +54,8 @@ int main(int argc, char **argv, char **envp)
             continue;
 
         /* tokenize input */
-        int i = 0;
-        char *token = strtok(line, " \t");
+        i = 0;
+        token = strtok(line, " \t");
         while (token && i < 99)
         {
             args[i++] = token;
@@ -64,7 +74,7 @@ int main(int argc, char **argv, char **envp)
         }
 
         /* find full path of command */
-        char *fullpath = find_command(args[0], envp);
+        fullpath = find_command(args[0], envp);
         if (!fullpath)
         {
             fprintf(stderr, "%s: %d: %s: not found\n", argv[0], line_no, args[0]);
@@ -73,7 +83,7 @@ int main(int argc, char **argv, char **envp)
         }
 
         /* execute command */
-        pid_t pid = fork();
+        pid = fork();
         if (pid == -1)
         {
             perror("fork");
@@ -90,7 +100,6 @@ int main(int argc, char **argv, char **envp)
         }
         else /* parent */
         {
-            int wstatus;
             waitpid(pid, &wstatus, 0);
             if (WIFEXITED(wstatus))
                 status = WEXITSTATUS(wstatus);
